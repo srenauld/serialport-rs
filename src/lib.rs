@@ -602,10 +602,10 @@ pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
     return windows::available_ports();
 
     #[cfg(any(not(any(unix, windows)), target_env = "musl"))]
-    Err(Error::new(
+    return Err(Error::new(
         ErrorKind::Unknown,
         "available_ports() not implemented for platform",
-    ))
+    ));
     
     return Ok(vec![]);
 }
