@@ -9,8 +9,6 @@ use std::{io, mem};
 
 #[cfg(target_os = "macos")]
 use cf::*;
-#[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "libudev"))]
-use libudev;
 use nix::fcntl::fcntl;
 #[cfg(target_os = "macos")]
 use nix::libc::{c_char, c_void};
@@ -816,88 +814,6 @@ impl SerialPort for TTYPort {
     }
 }
 
-/// Retrieves the udev property value named by `key`. If the value exists, then it will be
-/// converted to a String, otherwise None will be returned.
-#[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "libudev"))]
-fn udev_property_as_string(d: &libudev::Device, key: &str) -> Option<String> {
-    if let Some(s) = d.property_value(key).and_then(OsStr::to_str) {
-        Some(s.to_string())
-    } else {
-        None
-    }
-}
-
-/// Retrieves the udev property value named by `key`. This function assumes that the retrieved
-/// string is comprised of hex digits and the integer value of this will be returned as  a u16.
-/// If the property value doesn't exist or doesn't contain valid hex digits, then an error
-/// will be returned.
-#[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "libudev"))]
-fn udev_hex_property_as_u16(d: &libudev::Device, key: &str) -> ::Result<u16> {
-    if let Some(hex_str) = d.property_value(key).and_then(OsStr::to_str) {
-        if let Ok(num) = u16::from_str_radix(hex_str, 16) {
-            Ok(num)
-        } else {
-            Err(Error::new(ErrorKind::Unknown, "value not hex string"))
-        }
-    } else {
-        Err(Error::new(ErrorKind::Unknown, "key not found"))
-    }
-}
-
-#[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "libudev"))]
-fn port_type(d: &libudev::Device) -> ::Result<::SerialPortType> {
-    match d.property_value("ID_BUS").and_then(OsStr::to_str) {
-        Some("usb") => {
-            let serial_number = udev_property_as_string(d, "ID_SERIAL_SHORT");
-            Ok(SerialPortType::UsbPort(UsbPortInfo {
-                vid: udev_hex_property_as_u16(d, "ID_VENDOR_ID")?,
-                pid: udev_hex_property_as_u16(d, "ID_MODEL_ID")?,
-                serial_number,
-                manufacturer: udev_property_as_string(d, "ID_VENDOR"),
-                product: udev_property_as_string(d, "ID_MODEL"),
-            }))
-        }
-        Some("pci") => Ok(::SerialPortType::PciPort),
-        _ => Ok(::SerialPortType::Unknown),
-    }
-}
-
-#[cfg(all(target_os = "linux", not(target_env = "musl"), feature = "libudev"))]
-/// Scans the system for serial ports and returns a list of them.
-/// The `SerialPortInfo` struct contains the name of the port
-/// which can be used for opening it.
-pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
-    let mut vec = Vec::new();
-    if let Ok(context) = libudev::Context::new() {
-        let mut enumerator = libudev::Enumerator::new(&context)?;
-        enumerator.match_subsystem("tty")?;
-        let devices = enumerator.scan_devices()?;
-        for d in devices {
-            if let Some(p) = d.parent() {
-                if let Some(devnode) = d.devnode() {
-                    if let Some(path) = devnode.to_str() {
-                        if let Some(driver) = p.driver() {
-                            if driver == "serial8250"
-                                && TTYPort::open(devnode, &Default::default()).is_err()
-                            {
-                                continue;
-                            }
-                        }
-                        // Stop bubbling up port_type errors here so problematic ports are just
-                        // skipped instead of causing no ports to be returned.
-                        if let Ok(pt) = port_type(&d) {
-                            vec.push(SerialPortInfo {
-                                port_name: String::from(path),
-                                port_type: pt,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(vec)
-}
 
 #[cfg(target_os = "macos")]
 fn get_parent_device_by_type(
@@ -1149,16 +1065,6 @@ pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
     Err(Error::new(
         ErrorKind::Unknown,
         "Not implemented for this OS",
-    ))
-}
-
-#[cfg(all(target_os = "linux", not(target_env = "musl"), not(feature = "libudev")))]
-/// Enumerating serial ports on non-Linux POSIX platforms is disabled by disabled the "libudev"
-/// default feature.
-pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
-    Err(Error::new(
-        ErrorKind::Unknown,
-        "Serial port enumeration disabled (to enable compile with the 'libudev' feature)",
     ))
 }
 
