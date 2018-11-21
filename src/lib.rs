@@ -585,7 +585,6 @@ pub fn open_with_settings<T: AsRef<OsStr> + ?Sized>(
         Err(e) => Err(e),
     };
 
-    return Ok(vec![]);
     #[cfg(not(any(unix, windows)))]
     Err(Error::new(
         ErrorKind::Unknown,
@@ -607,4 +606,6 @@ pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
         ErrorKind::Unknown,
         "available_ports() not implemented for platform",
     ))
+    
+    return Ok(vec![]);
 }
