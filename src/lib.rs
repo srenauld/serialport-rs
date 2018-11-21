@@ -597,8 +597,6 @@ pub fn open_with_settings<T: AsRef<OsStr> + ?Sized>(
 /// It is not guaranteed that these ports exist or are available even if they're
 /// returned by this function.
 pub fn available_ports() -> ::Result<Vec<SerialPortInfo>> {
-    #[cfg(all(unix, not(target_env = "musl")))]
-    return posix::available_ports();
 
     #[cfg(windows)]
     return windows::available_ports();
